@@ -5,11 +5,9 @@ import com.ark.tool.manager.config.ArkProperties;
 import com.ark.tool.manager.util.ResponseUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,12 +23,15 @@ import java.util.Map;
 @RequestMapping("install")
 @Slf4j
 public class InstallController {
-    @Autowired
     private ArkProperties arkProperties;
 
-    private Boolean success;
+    private Boolean success = false;
 
     private Process p;
+
+    public InstallController(ArkProperties arkProperties){
+        this.arkProperties = arkProperties;
+    }
 
     @GetMapping("install")
     public ResponseResult install() throws IOException {
@@ -46,21 +47,30 @@ public class InstallController {
         File steamCMDDir = new File(arkProperties.getPath() + File.separator + "SteamCMD");
         if (!steamCMDDir.exists()){
             steamCMDDir.mkdirs();
+        }else {
+            if (steamCMDDir.exists()){
+                File[] files = steamCMDDir.listFiles((d, n) -> StringUtils.endsWith(n, ".dll"));
+                if (files != null && files.length > 0){
+                    success = true;
+                }
+            }
         }
-
-        if (p==null){
+        File publicDir = new File(steamCMDDir + File.separator + "public");
+        if (!publicDir.exists()){
+            publicDir.mkdirs();
+        }
+        ClassPathResource chinese = new ClassPathResource("steambootstrapper_schinese.txt");
+        FileUtils.copyFileToDirectory(chinese.getFile(),publicDir);
+        if (p==null && !success){
             new Thread(()->{
                 try {
                     //安装steamCMD
                     String name = "steamcmd.exe";
                     ClassPathResource resource = new ClassPathResource(name);
                     FileUtils.copyFileToDirectory(resource.getFile(),steamCMDDir);
-//                    String cmd = steamCMDDir.getAbsolutePath() + File.separator + name +" +login anonymous +quit";
-                   String cmd = "cmd /k start " +steamCMDDir.getAbsolutePath() + File.separator + name +" +login anonymous +quit";
+                    String cmd = "cmd /c start " +steamCMDDir.getAbsolutePath() + File.separator + name +" +login anonymous +quit";
                     success = false;
                     p = Runtime.getRuntime().exec(cmd);
-                    String s = IOUtils.toString(p.getInputStream());
-                    System.out.println(s);
                     int i = p.waitFor();
                     System.out.println(i);
                     if (i == 0){
@@ -83,7 +93,11 @@ public class InstallController {
 
             }).start();
         }else {
-            return ResponseUtil.fail("正在安装中！");
+            if (success){
+                return ResponseUtil.fail("SteamCMD已安装！");
+            }else {
+                return ResponseUtil.fail("正在安装中！");
+            }
         }
 
         return ResponseUtil.success("安装中!");
@@ -91,8 +105,8 @@ public class InstallController {
 
     @GetMapping("info")
     public Object getInfo(){
-        File info = new File(arkProperties.getPath() + File.separator + "SteamCMD" + File.separator
-                + "logs" + File.separator + "bootstrap_log.txt");
+        File info = new File(arkProperties.getPath() + File.separator + "SteamCMD"
+                + File.separator+ "logs" + File.separator + "bootstrap_log.txt");
         String s = "";
         try {
             s = FileUtils.readFileToString(info);
@@ -105,11 +119,8 @@ public class InstallController {
         return res;
     }
 
-    @GetMapping("stop")
-    public Object stop(){
-        p.destroy();
-        return ResponseUtil.success("终止成功!");
-    }
+   /* @GetMapping("first")
+    public Object first(){
 
-
+    }*/
 }
